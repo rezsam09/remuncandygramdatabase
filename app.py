@@ -164,6 +164,7 @@ def view_all_messages():
         return jsonify(success=False, error="Failed to fetch messages."), 500
 
 # ---------------------- RUN ----------------------
+init_db()  # <-- ensure DB is initialized always
+
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True)
