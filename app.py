@@ -4,26 +4,26 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# ---------------------- CONFIG ----------------------
 app = Flask(__name__)
 CORS(app)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise Exception("DATABASE_URL environment variable is not set!")
+    raise Exception("❌ DATABASE_URL environment variable is not set!")
 
 # ---------------------- DB INIT ----------------------
 def init_db():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                c.execute('''
+                c.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         username TEXT PRIMARY KEY,
                         password_hash TEXT NOT NULL
                     )
-                ''')
-                c.execute('''
+                """)
+                c.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
                         id SERIAL PRIMARY KEY,
                         sender TEXT NOT NULL,
@@ -32,11 +32,11 @@ def init_db():
                         content TEXT NOT NULL,
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
+                """)
                 conn.commit()
                 print("✅ Database initialized.")
     except Exception as e:
-        print("❌ Failed to initialize database:", e)
+        print("❌ Database initialization error:", e)
 
 # ---------------------- AUTH ----------------------
 @app.route("/auth", methods=["POST"])
@@ -69,8 +69,8 @@ def auth():
                     else:
                         if not password:
                             return jsonify(success=False, error="Password is required to register."), 400
-                        password_hash = generate_password_hash(password)
-                        c.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, password_hash))
+                        hash_pw = generate_password_hash(password)
+                        c.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, hash_pw))
                         conn.commit()
                         return jsonify(success=True, message="Account created.")
     except Exception as e:
@@ -89,26 +89,23 @@ def send_message():
     content = data.get("content", "").strip()
 
     if not all([sender, recipient, alias, content]):
-        return jsonify(success=False, error="All fields are required (from, to, alias, content)."), 400
+        return jsonify(success=False, error="All fields are required."), 400
 
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # Check sender
                 c.execute("SELECT 1 FROM users WHERE username = %s", (sender,))
                 if not c.fetchone():
                     return jsonify(success=False, error="Sender does not exist."), 404
 
-                # Check recipient
                 c.execute("SELECT 1 FROM users WHERE username = %s", (recipient,))
                 if not c.fetchone():
                     return jsonify(success=False, error="Recipient does not exist."), 404
 
-                # Insert message
-                c.execute('''
+                c.execute("""
                     INSERT INTO messages (sender, recipient, alias, content)
                     VALUES (%s, %s, %s, %s)
-                ''', (sender, recipient, alias, content))
+                """, (sender, recipient, alias, content))
                 conn.commit()
 
         return jsonify(success=True, message="Candygram sent!")
@@ -120,22 +117,22 @@ def send_message():
 @app.route("/inbox/<username>", methods=["GET"])
 def inbox(username):
     username = username.strip().lower()
-
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                c.execute('''
+                c.execute("""
                     SELECT alias, content, timestamp
                     FROM messages
                     WHERE recipient = %s
                     ORDER BY timestamp DESC
-                ''', (username,))
-                messages = c.fetchall()
+                """, (username,))
+                rows = c.fetchall()
 
-        result = [
-            {"alias": alias, "content": content, "timestamp": timestamp.isoformat()} for alias, content, timestamp in messages
+        messages = [
+            {"alias": alias, "content": content, "timestamp": timestamp.isoformat()}
+            for alias, content, timestamp in rows
         ]
-        return jsonify(success=True, messages=result)
+        return jsonify(success=True, messages=messages)
     except Exception as e:
         print("❌ /inbox error:", e)
         return jsonify(success=False, error="Could not fetch inbox."), 500
@@ -143,23 +140,25 @@ def inbox(username):
 # ---------------------- ADMIN VIEW ----------------------
 @app.route("/admin/messages", methods=["GET"])
 def view_all_messages():
-    secret = request.args.get("key")
-    if secret != "remun2025":
-        return jsonify({"error": "Unauthorized"}), 401
+    if request.args.get("key") != "remun2025":
+        return jsonify(success=False, error="Unauthorized"), 401
 
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                c.execute('''
+                c.execute("""
                     SELECT id, sender, recipient, alias, content, timestamp
                     FROM messages
                     ORDER BY timestamp DESC
-                ''')
+                """)
                 rows = c.fetchall()
 
-        return jsonify(success=True, messages=[{
-            "id": r[0], "sender": r[1], "recipient": r[2], "alias": r[3], "content": r[4], "timestamp": r[5].isoformat()
-        } for r in rows])
+        messages = [{
+            "id": row[0], "sender": row[1], "recipient": row[2],
+            "alias": row[3], "content": row[4], "timestamp": row[5].isoformat()
+        } for row in rows]
+
+        return jsonify(success=True, messages=messages)
     except Exception as e:
         print("❌ /admin/messages error:", e)
         return jsonify(success=False, error="Failed to fetch messages."), 500
