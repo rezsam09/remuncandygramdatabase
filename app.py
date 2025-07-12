@@ -139,6 +139,27 @@ def inbox(username):
 
     return jsonify(success=True, messages=result)
 
+# ---------------------- ADMIN VIEW (NEW!) ----------------------
+@app.route("/admin/messages", methods=["GET"])
+def view_all_messages():
+    secret = request.args.get("key")
+    if secret != "remun2025":  # 🔒 Replace with your real key if needed
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute('''
+        SELECT id, sender, recipient, alias, content, timestamp
+        FROM messages
+        ORDER BY timestamp DESC
+    ''')
+    rows = c.fetchall()
+    conn.close()
+
+    return jsonify(success=True, messages=[dict(row) for row in rows])
+
 # ---------------------- RUN ----------------------
 if __name__ == "__main__":
     init_db()
